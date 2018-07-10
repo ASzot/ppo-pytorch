@@ -16,6 +16,7 @@ from tensorboardX import SummaryWriter
 
 import os
 import shutil
+import copy
 
 CLIP_PARAM = 0.2
 N_EPOCH = 4
@@ -32,6 +33,11 @@ GAMMA = 0.99
 TAU = 0.95
 N_ENVS = 16
 ENV_NAME = 'Reacher-v1'
+SAVE_INTERVAL = 10000
+MODEL_DIR = 'weights'
+
+if not os.path.exists(MODEL_DIR):
+    os.makedirs(MODEL_DIR)
 
 def update(rollouts, policy, optimizer):
     advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
@@ -51,8 +57,7 @@ def update(rollouts, policy, optimizer):
             ratio = torch.exp(action_log_probs - old_action_log_probs)
 
             surr1 = ratio * adv_targ
-            surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM,
-                                       1.0 + CLIP_PARAM) * adv_targ
+            surr2 = torch.clamp(ratio, 1.0 - CLIP_PARAM, 1.0 + CLIP_PARAM) * adv_targ
 
             action_loss = -torch.min(surr1, surr2).mean()
 
@@ -72,6 +77,7 @@ def update(rollouts, policy, optimizer):
             losses.append(loss.item())
 
     return np.mean(value_losses), np.mean(action_losses), np.mean(entropy_losses), np.mean(losses)
+
 
 if os.path.exists('runs'):
     shutil.rmtree('runs')
@@ -98,9 +104,8 @@ current_obs = torch.zeros(N_ENVS, *obs_shape)
 obs = envs.reset()
 
 def update_current_obs(obs):
-    shape_dim0 = envs.observation_space.shape[0]
     obs = torch.from_numpy(obs).float()
-    current_obs[:, -shape_dim0:] = obs
+    current_obs[:, :] = obs
 
 update_current_obs(obs)
 
@@ -146,14 +151,20 @@ for update_i in tqdm(range(n_updates)):
     value_loss, action_loss, entropy_loss, overall_loss = update(rollouts, policy,
             optimizer)
 
-    print(value_loss)
-    print('Mean reward %.2f' % final_rewards.mean())
     rollouts.after_update()
 
     writer.add_scalar('data/action_loss', action_loss, update_i)
     writer.add_scalar('data/value_loss', value_loss, update_i)
     writer.add_scalar('data/entropy_loss', entropy_loss, update_i)
     writer.add_scalar('data/overall_loss', overall_loss, update_i)
+    writer.add_scalar('data/avg_reward', final_rewards.mean(), update_i)
+
+    if update_i % SAVE_INTERVAL == 0:
+        save_model = policy
+        if CUDA:
+            save_model = copy.deepcopy(policy).cpu()
+
+        torch.save(save_model, os.path.join(MODEL_DIR, 'model_%i.pt' % update_i))
 
 
 writer.close()
