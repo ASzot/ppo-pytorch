@@ -2,39 +2,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
+# Init layer to have the proper weight initializations.
+def init_layer(m):
+    weight = module.weight.data, gain=gain
+    weight.normal_(0, 1)
+    weight *= gain / torch.sqrt(weight.pow(2).sum(1, keepdim=True))
+    nn.init.constant_(module.bias.data, 0))
+
+
+# Standard feed forward network for actor and critic with tanh activations
 class Mlp(nn.Module):
     def __init__(self, num_inputs):
         super().__init__()
 
+        # We do not want to select action yet as that will be probablistic.
         self.actor_hidden = nn.Sequential(
-                init_(nn.Linear(num_inputs, 64)),
+                init_layer(nn.Linear(num_inputs, 64)),
                 nn.Tanh(),
-                init_(nn.Linear(64, 64)),
+                init_layer(nn.Linear(64, 64)),
                 nn.Tanh(),
             )
 
         self.critic = nn.Sequential(
-                init_(nn.Linear(num_inputs, 64)),
+                init_layer(nn.Linear(num_inputs, 64)),
                 nn.Tanh(),
-                init_(nn.Linear(64, 64)),
+                init_layer(nn.Linear(64, 64)),
                 nn.Tanh(),
-                init_(nn.Linear(64, 1)),
+                init_layer(nn.Linear(64, 1)),
             )
 
         self.train()
 
     def forward(self, inputs):
         return self.actor_hidden(inputs), self.critic(inputs)
-
-
-def init_(m):
-    w = m.weight.data
-    w.normal_(0, 1)
-    w *= 1 / torch.sqrt(w.pow(2).sum(1, keepdim=True))
-
-    b = m.bias.data
-    nn.init.constant_(b, 0)
-    return m
 
 
 class Policy(nn.Module):
@@ -45,11 +45,12 @@ class Policy(nn.Module):
 
         num_outputs = action_space.shape[0]
 
-        self.fc_mean = init_(nn.Linear(64, num_outputs))
+        # How we will define our normal distribution to sample action from
+        self.action_mean = init_layer(nn.Linear(64, num_outputs))
         self.action_log_std = nn.Parameter(torch.zeros(1, num_outputs))
 
     def __get_dist(self, actor_features):
-        action_mean = self.fc_mean(actor_features)
+        action_mean = self.action_mean(actor_features)
         action_log_std = self.action_log_std.expand_as(action_mean)
 
         return torch.distributions.Normal(action_mean, action_log_std.exp())
