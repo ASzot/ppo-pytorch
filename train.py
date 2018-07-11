@@ -11,7 +11,7 @@ from tqdm import tqdm
 from memory import RolloutStorage
 from model import Policy
 
-from multiprocessing_env import SubprocVecEnv
+from multiprocessing_env import SubprocVecEnv, VecNormalize
 from tensorboardX import SummaryWriter
 
 import os
@@ -58,11 +58,17 @@ N_ENVS = 16
 # task.
 ENV_NAME = 'Reacher-v1'
 
-SAVE_INTERVAL = 10000
-MODEL_DIR = 'weights2'
+SAVE_INTERVAL = 500
+LOG_INTERVAL = 10
+
+MODEL_DIR = 'weights'
+
 
 # Create our model output path if it does not exist.
 if not os.path.exists(MODEL_DIR):
+    os.makedirs(MODEL_DIR)
+else:
+    shutil.rmtree(MODEL_DIR)
     os.makedirs(MODEL_DIR)
 
 def update_params(rollouts, policy, optimizer):
@@ -117,6 +123,8 @@ def make_env():
 envs = [make_env for i in range(N_ENVS)]
 envs = SubprocVecEnv(envs)
 
+envs = VecNormalize(envs, gamma=GAMMA)
+
 obs_shape = envs.observation_space.shape
 # Print observation space so we know what we are dealing with.
 print('Obs shape', obs_shape)
@@ -137,15 +145,15 @@ def update_current_obs(obs):
 
 update_current_obs(obs)
 
+# Intialize our rollouts
+rollouts = RolloutStorage(N_STEPS, N_ENVS, obs_shape, envs.action_space,
+        current_obs)
+
 if CUDA:
     # Put on the GPU
     policy.cuda()
     rollouts.cuda()
     current_obs.cuda()
-
-# Intialize our rollouts
-rollouts = RolloutStorage(N_STEPS, N_ENVS, obs_shape, envs.action_space,
-        current_obs, current_obs)
 
 episode_rewards = torch.zeros([N_ENVS, 1])
 final_rewards = torch.zeros([N_ENVS, 1])
@@ -181,7 +189,7 @@ for update_i in tqdm(range(n_updates)):
     with torch.no_grad():
         next_value = policy.get_value(rollouts.observations[-1]).detach()
 
-    rollouts.compute_returns(next_value, GAMMA, TAU)
+    rollouts.compute_returns(next_value, GAMMA)
 
     value_loss, action_loss, entropy_loss, overall_loss = update_params(rollouts, policy,
             optimizer)
@@ -194,6 +202,9 @@ for update_i in tqdm(range(n_updates)):
     writer.add_scalar('data/entropy_loss', entropy_loss, update_i)
     writer.add_scalar('data/overall_loss', overall_loss, update_i)
     writer.add_scalar('data/avg_reward', final_rewards.mean(), update_i)
+
+    if update_i % LOG_INTERVAL == 0:
+        print('Reward: %.3f' % (final_rewards.mean()))
 
     if update_i % SAVE_INTERVAL == 0:
         save_model = policy

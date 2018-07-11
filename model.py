@@ -4,10 +4,11 @@ import torch
 
 # Init layer to have the proper weight initializations.
 def init_layer(m):
-    weight = module.weight.data, gain=gain
+    weight = m.weight.data
     weight.normal_(0, 1)
-    weight *= gain / torch.sqrt(weight.pow(2).sum(1, keepdim=True))
-    nn.init.constant_(module.bias.data, 0))
+    weight *= 1.0 / torch.sqrt(weight.pow(2).sum(1, keepdim=True))
+    nn.init.constant_(m.bias.data, 0)
+    return m
 
 
 # Standard feed forward network for actor and critic with tanh activations

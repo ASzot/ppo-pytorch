@@ -4,5 +4,11 @@ Implementation of https://arxiv.org/abs/1707.06347 from OpenAI for continuous ac
 
 This implementation is designed to be **simple** and **easy to read**. No complicated logic or unnecessary Python magic. 
 
+# Usage
+`python train.py` to train. 
+
+`python evaluate.py` to test.
+
 ## Requirements
 All you need are PyTorch, Gym, and possibly MuJoCo depending on what environment you want to run. For training you will also need [tensorboard-pytorch](https://github.com/lanpa/tensorboard-pytorch) installed. 
+

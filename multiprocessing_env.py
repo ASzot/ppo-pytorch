@@ -4,6 +4,37 @@
 import numpy as np
 from multiprocessing import Process, Pipe
 
+import numpy as np
+class RunningMeanStd(object):
+    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+    def __init__(self, epsilon=1e-4, shape=()):
+        self.mean = np.zeros(shape, 'float64')
+        self.var = np.ones(shape, 'float64')
+        self.count = epsilon
+
+    def update(self, x):
+        batch_mean = np.mean(x, axis=0)
+        batch_var = np.var(x, axis=0)
+        batch_count = x.shape[0]
+        self.update_from_moments(batch_mean, batch_var, batch_count)
+
+    def update_from_moments(self, batch_mean, batch_var, batch_count):
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        new_mean = self.mean + delta * batch_count / tot_count
+        m_a = self.var * (self.count)
+        m_b = batch_var * (batch_count)
+        M2 = m_a + m_b + np.square(delta) * self.count * batch_count / (self.count + batch_count)
+        new_var = M2 / (self.count + batch_count)
+
+        new_count = batch_count + self.count
+
+        self.mean = new_mean
+        self.var = new_var
+        self.count = new_count
+
+
 def worker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()
     env = env_fn_wrapper.x()
@@ -79,6 +110,29 @@ class VecEnv(object):
         self.step_async(actions)
         return self.step_wait()
 
+class VecEnvWrapper(VecEnv):
+    def __init__(self, venv, observation_space=None, action_space=None):
+        self.venv = venv
+        VecEnv.__init__(self,
+            num_envs=venv.num_envs,
+            observation_space=observation_space or venv.observation_space,
+            action_space=action_space or venv.action_space)
+
+    def step_async(self, actions):
+        self.venv.step_async(actions)
+
+    def reset(self):
+        pass
+
+    def step_wait(self):
+        pass
+
+    def close(self):
+        return self.venv.close()
+
+    def render(self):
+        self.venv.render()
+
 
 class CloudpickleWrapper(object):
     """
@@ -150,3 +204,47 @@ class SubprocVecEnv(VecEnv):
 
     def __len__(self):
         return self.nenvs
+
+
+class VecNormalize(VecEnvWrapper):
+    """
+    Vectorized environment base class
+    """
+    def __init__(self, venv, ob=True, ret=True, clipob=10., cliprew=10., gamma=0.99, epsilon=1e-8):
+        VecEnvWrapper.__init__(self, venv)
+        self.ob_rms = RunningMeanStd(shape=self.observation_space.shape) if ob else None
+        self.ret_rms = RunningMeanStd(shape=()) if ret else None
+        self.clipob = clipob
+        self.cliprew = cliprew
+        self.ret = np.zeros(self.num_envs)
+        self.gamma = gamma
+        self.epsilon = epsilon
+
+    def step_wait(self):
+        """
+        Apply sequence of actions to sequence of environments
+        actions -> (observations, rewards, news)
+        where 'news' is a boolean vector indicating whether each element is new.
+        """
+        obs, rews, news, infos = self.venv.step_wait()
+        self.ret = self.ret * self.gamma + rews
+        obs = self._obfilt(obs)
+        if self.ret_rms:
+            self.ret_rms.update(self.ret)
+            rews = np.clip(rews / np.sqrt(self.ret_rms.var + self.epsilon), -self.cliprew, self.cliprew)
+        return obs, rews, news, infos
+
+    def _obfilt(self, obs):
+        if self.ob_rms:
+            self.ob_rms.update(obs)
+            obs = np.clip((obs - self.ob_rms.mean) / np.sqrt(self.ob_rms.var + self.epsilon), -self.clipob, self.clipob)
+            return obs
+        else:
+            return obs
+
+    def reset(self):
+        """
+        Reset all environments
+        """
+        obs = self.venv.reset()
+        return self._obfilt(obs)
