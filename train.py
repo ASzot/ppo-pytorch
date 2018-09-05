@@ -121,6 +121,7 @@ def make_env():
 
 # Parallelize environments
 envs = [make_env for i in range(N_ENVS)]
+
 envs = SubprocVecEnv(envs)
 
 envs = VecNormalize(envs, gamma=GAMMA)
@@ -167,6 +168,9 @@ for update_i in tqdm(range(n_updates)):
             value, action, action_log_prob = policy.act(rollouts.observations[step])
 
         take_actions = action.squeeze(1).cpu().numpy()
+
+        if len(take_actions.shape) == 1:
+            take_actions = np.expand_dims(take_actions, axis=-1)
 
         obs, reward, done, info = envs.step(take_actions)
 
