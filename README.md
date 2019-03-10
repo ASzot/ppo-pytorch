@@ -4,6 +4,8 @@ Implementation of https://arxiv.org/abs/1707.06347 from OpenAI for continuous ac
 
 This implementation is designed to be **simple** and **easy to read**. No complicated logic or unnecessary Python magic. 
 
+Based on the code from https://github.com/ikostrikov/pytorch-a2c-ppo-acktr. 
+
 # Usage
 `python train.py` to train. 
 
