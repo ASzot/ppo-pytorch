@@ -1,5 +1,7 @@
 # Proximal Policy Optimization
 
+**I would recommend using the original code https://github.com/ikostrikov/pytorch-a2c-ppo-acktr or my personal RL code base https://github.com/ASzot/rl-toolkit** 
+
 Implementation of https://arxiv.org/abs/1707.06347 from OpenAI for continuous action spaces. 
 
 This implementation is designed to be **simple** and **easy to read**. No complicated logic or unnecessary Python magic. 
